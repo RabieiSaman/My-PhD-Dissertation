@@ -1,0 +1,271 @@
+# (1) This section imports all necessary libraries for developing a ConvLSTM2D-based deep learning model using Keras and TensorFlow. It includes data handling, preprocessing, model architecture definition, training utilities, performance evaluation metrics, and visualization tools to facilitate efficient spatiotemporal modeling and prediction tasks.
+
+import csv
+import numpy as np
+import h5py
+from tqdm import tqdm
+from sklearn.preprocessing import StandardScaler
+from tensorflow.keras import backend as K
+import numpy as np
+from sklearn.metrics import r2_score,mean_absolute_error,mean_squared_error
+import os
+from  builtins import any as b_any
+import time
+import glob
+import h5py
+from tqdm import tqdm
+from matplotlib.colors import LinearSegmentedColormap
+from sklearn.preprocessing import MinMaxScaler
+import tensorflow as tf
+from tensorflow.keras import initializers, activations
+import tensorflow.keras
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import ConvLSTM2D, Dense, Flatten
+from tensorflow.keras import backend as k
+from tensorflow.keras.initializers import HeNormal
+import tensorflow.keras as K
+from tensorflow.keras.callbacks import EarlyStopping,History
+from tensorflow.keras.callbacks import ModelCheckpoint
+from tensorflow.keras.layers import Conv2D, MaxPooling2D,AveragePooling2D, Dense, Dropout, Activation, Layer,Flatten, add, Add, multiply,GlobalAveragePooling2D, GlobalMaxPooling2D, Reshape,Permute, Concatenate, Lambda,BatchNormalization, TimeDistributed
+from tensorflow.keras.models import load_model
+from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+from scipy.stats import pearsonr
+from tensorflow.keras.losses import MeanSquaredError
+from scipy.stats import pearsonr
+from tensorflow.python.framework import ops
+
+
+
+# (2) This section checks whether TensorFlow detects a GPU for accelerated computations. It verifies if the installed TensorFlow package is correctly configured to utilize the GPU by listing available physical GPU devices and prints whether a GPU is available or not.
+
+if tf.config.list_physical_devices('GPU'):
+    print('GPU is available.')
+else:
+    print('GPU is not available.')
+
+
+
+# (3) This section reads the dataset in .h5 format containing soil moisture data for the United States and reshapes it into 8×8 window sizes to enhance the ConvLSTM2D model’s ability to capture spatial relationships between predictors and targets. The target variables include SMAPL3 and NLDAS soil moisture products, where NLDAS (0–10 cm SM) is in the 27th dimension, and SMAPL3 is in the 26th dimension of the dataset.
+
+nldas=27
+dca=26
+hdf5_file_path = r'C:\PhD_files\Article_NLDAS_ConvLSTM2D\filled_SMAP_Products\Training_Validation_Test\Train_FinalDataset_reshaped_Fulldepths_8.h5'
+filled_data = h5py.File(hdf5_file_path, 'r')
+filled_data = filled_data['data']
+filled_data = (np.array(filled_data))
+print('Done!')
+
+
+
+# (4) This section addresses GPU memory limitations by randomly removing 30% of the 8×8 windows from the dataset to reduce computational load during training. By setting a percentage parameter (0.3), the code ensures that 30% of the spatial windows across the U.S. are excluded, allowing the ConvLSTM2D model to train efficiently without exceeding GPU RAM capacity.
+
+Percent = 0.3
+num_to_remove = int(np.floor(filled_data.shape[1] * Percent))
+indices_to_remove = np.random.choice(filled_data.shape[1], size=num_to_remove, replace=False)
+mask = np.ones(filled_data.shape[1], dtype=bool)  # Start with all True
+mask[indices_to_remove] = False  # Set selected indices to False (to remove)
+filled_data = filled_data[:, mask, :, :, :]
+print('After', filled_data.shape)
+
+
+
+# (5) This section normalizes the dataset, which is a crucial step in deep learning model development to ensure stability and faster convergence during training. Given the presence of outliers, the normalization approach sets the 80th percentile value as the maximum and scales all data points by dividing them by this value, effectively reducing the impact of extreme values while maintaining meaningful variability for further processing.
+
+abs_top_80_values = np.empty(filled_data.shape[-1])
+for i in tqdm(range(filled_data.shape[-1])):
+    channel_data = filled_data[..., i]
+    if np.isinf(channel_data).any():  # Check if there are any inf values in the channel
+        non_inf_data = channel_data[~np.isinf(channel_data)]  # Get only the non-inf values
+        non_inf_data = np.abs(non_inf_data)  # Take the absolute values
+        non_inf_data_sorted = np.sort(non_inf_data)  # Sort the data
+        top_80_index = int(0.8 * len(non_inf_data_sorted))  # Calculate the index for the top 80%
+        abs_top_80_values[i] = non_inf_data_sorted[top_80_index]
+    else:
+        abs_top_80_values[i] = np.percentile(np.abs(channel_data), 80)
+for i in tqdm(range(filled_data.shape[-1])):
+    filled_data[..., i] = filled_data[..., i] / abs_top_80_values[i]
+def create_dataset(data, predictor_channels, target_channels, look_back, forecast_horizon):
+    X, Y = [], []
+    for i in tqdm(range(data.shape[0]-look_back-forecast_horizon+1)):
+        X.append(data[i:(i+look_back), :, :, :, predictor_channels])  # Use selected channels as predictors
+        Y.append(data[i+look_back+forecast_horizon-1, :, :, :, target_channels])  # Use selected channels as targets
+    return np.array(X), np.array(Y)
+
+
+
+
+
+
+# (6) This section sets the look-back period (time steps) for the ConvLSTM2D model, defining how many previous days of data will be considered to capture temporal dependencies. Additionally, it specifies the forecasting lead time, which can be 1, 3, 7, 14, or 30 days, determining how far ahead the model predicts soil moisture values.
+
+look_back = 2
+# We should change this value to (1-, 3-, 7-, 14-, and 30-day) to forecast for a specific day
+forecast_horizon = 0
+
+
+
+
+
+# (7) This section handles different prediction scenarios by selecting specific input combinations, such as SMAP alone, SMAP + SOLUS, or SMAP + SOLUS + SM5. It defines which dataset dimensions should be included in the modeling process, ensuring that only the relevant predictor variables are used for training and forecasting.
+
+predictor_channels =  [  7, 8, 9, 10, 11, 12, 13,   15, 18, 21,   ]
+print('Predictors are:', predictor_channels)
+target_channels = [nldas, dca] 
+X, Y = create_dataset(filled_data, predictor_channels, target_channels, look_back, forecast_horizon)
+Y = np.transpose(Y, (0, 2, 3, 4, 1))
+X = np.transpose(X, (0, 2, 1, 3, 4, 5))
+X = X.reshape(X.shape[0]*X.shape[1], X.shape[2], X.shape[3], X.shape[4], X.shape[-1])
+Y = Y.reshape(Y.shape[0]*Y.shape[1], Y.shape[2], Y.shape[3], Y.shape[-1])
+print('Percent == ', Percent)
+print('Look_Back == ', look_back)
+print('Forecast == ', forecast_horizon)
+
+
+
+
+
+# (8) This section defines the loss function by incorporating Root Mean Squared Error (RMSE) and correlation (R) as evaluation metrics. Depending on the selected prediction scenario, the model optimizes for a specific target variable (e.g., SMAPL3 or NLDAS 0-10 cm SM) by minimizing RMSE to reduce prediction error or maximizing correlation (R) to improve agreement between predicted and observed values.
+
+def pearson(y_true, y_pred):
+    # Compute the means
+    y_true_mean = tf.reduce_mean(y_true, axis=0)
+    y_pred_mean = tf.reduce_mean(y_pred, axis=0)
+    # Compute the numerator
+    num = tf.reduce_sum((y_true - y_true_mean) * (y_pred - y_pred_mean), axis=0)
+    # Cmpute the denominator
+    den = tf.sqrt(tf.reduce_sum(tf.square(y_true - y_true_mean), axis=0) * tf.reduce_sum(tf.square(y_pred - y_pred_mean), axis=0))
+    return num / den
+
+class CustomLoss(tf.keras.losses.Loss):
+    def __init__(self, weights=[0.5, 0.5], reduction=tf.keras.losses.Reduction.AUTO, name="custom_loss"):
+        super().__init__(reduction=reduction, name=name)
+        self.weights = weights
+
+    def call(self, y_true, y_pred):
+        mse = tf.keras.losses.MeanSquaredError()
+        rmse_loss = tf.math.sqrt(mse(y_true[..., 0], y_pred[..., 0]))
+        pearson_corr = pearson(y_true[..., 1], y_pred[..., 1])
+        return (rmse_loss) - 0.1*((pearson_corr**2))
+input_shape = (None, look_back, 8, 8, X.shape[-1])  # Adjust this according to your data
+a = input_shape
+fms = 4
+# He initializer
+initializer = tf.keras.initializers.HeNormal(seed=42)
+model = Sequential([
+    ConvLSTM2D(filters=fms, kernel_size=(3, 3), return_sequences=True, input_shape=input_shape[1:], padding='same', kernel_initializer=initializer),
+    BatchNormalization(),
+    Dropout(0.2),
+
+    ConvLSTM2D(filters=fms*4, kernel_size=(3, 3), return_sequences=True, padding='same', kernel_initializer=initializer),
+    BatchNormalization(),
+    Dropout(0.2),
+
+    ConvLSTM2D(filters=fms*8, kernel_size=(3, 3), return_sequences=True, padding='same', kernel_initializer=initializer),
+    BatchNormalization(),
+    Dropout(0.2),
+
+    ConvLSTM2D(filters=fms*32, kernel_size=(3, 3), return_sequences=True, padding='same', kernel_initializer=initializer),
+    BatchNormalization(),
+    Dropout(0.2),
+
+    ConvLSTM2D(filters=fms*64, kernel_size=(3, 3), return_sequences=True, padding='same', kernel_initializer=initializer),
+    BatchNormalization(),
+    Dropout(0.2),
+
+    ConvLSTM2D(filters=fms*128, kernel_size=(3, 3), return_sequences=True, padding='same', kernel_initializer=initializer),
+    BatchNormalization(),
+    Dropout(0.2),
+
+    ConvLSTM2D(filters=fms*256, kernel_size=(3, 3), return_sequences=True, padding='same', kernel_initializer=initializer),
+    BatchNormalization(),
+    Dropout(0.2),
+
+    ConvLSTM2D(filters=2, kernel_size=(3, 3), return_sequences=False, padding='same', kernel_initializer=initializer),
+    BatchNormalization(),
+    Dropout(0.2),
+])
+weights = [0.5, 0.5]  # Weights for RMSE and Pearson correlation
+model.compile(optimizer='adam', loss= CustomLoss(weights))
+# Callbacks
+path = r'H:\Final_Data\Article_NLDAS_ConvLSTM2D\filled_SMAP_Products\Training_Validation_Test\Model2 _ General\Best Models\New_run_Scenarios'
+batch_size = 64
+patience = 40
+early_stopping = EarlyStopping(monitor='val_loss', patience=patience)
+name = 'Depth_25cm_' + str(look_back) + '_Forecast' + str(forecast_horizon) + '_Batch' + str(batch_size) + '_Petience' + str(patience) + '_Percent' + str(Percent) 
+aa = path + '//' + name + '_SubSurface1_scenario(1)_SMAP_SOLUS.h5'
+model_checkpoint = ModelCheckpoint(aa, monitor='val_loss', save_best_only=True)
+print(aa)
+
+
+
+
+
+
+# (9) This section displays the model summary, including the number of trainable and non-trainable parameters, providing an overview of the model's architecture. Additionally, it initiates the training process by fitting the model using the specified number of epochs, batch size, and previously defined callbacks, ensuring efficient training and optimization.
+
+model.summary()
+model.fit(X, Y,
+          epochs=400,
+          batch_size=64,
+          validation_split=0.2,
+          callbacks=[early_stopping, model_checkpoint])
+
+
+
+
+# (10) After training the model, it is applied to the test set to predict soil moisture values. The predicted outputs are then reshaped from the 8×8 window size back to their original spatial format to facilitate validation against ground in-situ measurements, ensuring accuracy and reliability of the model's performance.
+
+arr1 = preds[0, :, :, 0] * abs_top_80_values[nldas]
+unique_list = [1]
+Y = np.delete(Y, unique_list, axis=3)
+preds = best_model.predict(X, batch_size=batch_size)
+preds = np.delete(preds, unique_list, axis=3)
+# Function to flatten 4D array while preserving the order within each 8x8 window
+def flatten_4d_array(array):
+    flattened = []
+    for sample in tqdm(array):
+        for i in range(8):
+            for j in range(8):
+                flattened.append(np.squeeze(sample[i, j]))
+    return np.array(flattened).reshape(-1, 1)
+Y = Y * abs_top_80_values[nldas]
+preds = preds * abs_top_80_values[nldas]
+# Flatten Y and Preds
+Y_flattened = flatten_4d_array(Y)
+preds_flattened = flatten_4d_array(preds)
+def reshape_to_4d(array, num_samples):
+    # Initialize an empty array with the original shape
+    reshaped_array = np.zeros((num_samples, 8, 8, 1))
+    # Index to keep track of the position in the flattened array
+    index = 0
+    # Loop through each sample
+    for sample in tqdm(range(num_samples)):
+        # Loop through each row and column in the 8x8 window
+        for i in range(8):
+            for j in range(8):
+                # Assign the value from the flattened array and increment the index
+                reshaped_array[sample, i, j, 0] = array[index]
+                index += 1             
+    return reshaped_array
+# Number of samples in the original data
+num_samples = Y.shape[0]
+# Reshape Y_flattened and adjusted_preds_flattened back to their original 4D shape
+Y_original_shape = reshape_to_4d(Y_flattened.flatten(), num_samples)
+adjusted_preds_original_shape = reshape_to_4d(adjusted_preds_flattened.flatten(), num_samples)
+mse = np.mean((arr1_flat - arr4_flat)**2)
+rmse = np.sqrt(mse)
+print(f'RMSE Product(NLDAS) with NLDAS: {rmse}')
+correlation_coefficient, _ = pearsonr(arr1_flat, arr4_flat)
+print(f"Pearson correlation coefficient (R): {correlation_coefficient}")
+
+
+
+
+# Create the hexbin plot
+plt.hexbin(arr1_flat, arr4_flat, gridsize=50, cmap='Blues')
+cb = plt.colorbar(label='Density')
+plt.title('Density of arr1_flat vs. arr4_flat')
+plt.xlabel('arr1_flat')
+plt.ylabel('arr4_flat')
