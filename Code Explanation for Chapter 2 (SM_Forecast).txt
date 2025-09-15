@@ -51,7 +51,7 @@ else:
 
 nldas=27
 dca=26
-hdf5_file_path = r'C:\PhD_files\Article_NLDAS_ConvLSTM2D\filled_SMAP_Products\Training_Validation_Test\Train_FinalDataset_reshaped_Fulldepths_8.h5'
+hdf5_file_path = r'...\Train_FinalDataset_reshaped_Fulldepths_8.h5'
 filled_data = h5py.File(hdf5_file_path, 'r')
 filled_data = filled_data['data']
 filled_data = (np.array(filled_data))
@@ -189,7 +189,7 @@ model = Sequential([
 weights = [0.5, 0.5]  # Weights for RMSE and Pearson correlation
 model.compile(optimizer='adam', loss= CustomLoss(weights))
 # Callbacks
-path = r'H:\Final_Data\Article_NLDAS_ConvLSTM2D\filled_SMAP_Products\Training_Validation_Test\Model2 _ General\Best Models\New_run_Scenarios'
+path = r'/your directory'
 batch_size = 64
 patience = 40
 early_stopping = EarlyStopping(monitor='val_loss', patience=patience)
@@ -268,4 +268,5 @@ plt.hexbin(arr1_flat, arr4_flat, gridsize=50, cmap='Blues')
 cb = plt.colorbar(label='Density')
 plt.title('Density of arr1_flat vs. arr4_flat')
 plt.xlabel('arr1_flat')
+
 plt.ylabel('arr4_flat')
