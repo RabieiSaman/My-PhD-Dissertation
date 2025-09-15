@@ -26,7 +26,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 # In this section the code read the csv file contains the information of the satellite observations, remote sensing, and soil survey data. Then separate it into the training, validation, and the testing phase (2017-2022), (2022), and (2023) respectively.
  
 # Load the dataset from the provided file
-file_path = r'D:\PhD_Files\Chapter2_Physics Informed Deep Learning\Best_Models\SNOTEL_Version_NotFilled\AllStations_(2017-2023)_Final_SMAPL3_COM_MODIS_StaticData.csv'
+file_path = r'...\AllStations_(2017-2023)_Final_SMAPL3_COM_MODIS_StaticData.csv'
 data = pd.read_csv(file_path)
 total_length = len(data)
 print("Total length of the dataset:", total_length)
@@ -63,7 +63,7 @@ data_sorted[target] = data_sorted[target] / 100
 data_sorted['Date'] = pd.to_datetime(data_sorted['Date'], format='%Y%m%d')
 
 copy_data = data_sorted.copy()
-output_file_path = r'D:\PhD_Files\Chapter2_Physics Informed Deep Learning\Best_Models\SNOTEL_Version_NotFilled\CNN-LSTM_timestep(5)_WithRegularization_SNOTEL_original.csv'
+output_file_path = r'...\CNN-LSTM_timestep(5)_WithRegularization_SNOTEL_original.csv'
 #copy_data.to_csv(output_file_path, index=False)
 print('Original Dataset Was Created!')
 print(len(copy_data))
@@ -112,7 +112,7 @@ print('For Original Test Dataset')
 X_test_o, y_test_o = create_cnn_lstm_samples(test_data, all_columns, target, time_steps)
 
 # Filepath to save the datasets
-output_filepath = r"C:\project\cnn_lstm_dataset_lookback(5)_Alldataset_SNOTEL_NotFilled.h5"
+output_filepath = r"...\cnn_lstm_dataset_lookback(5)_Alldataset_SNOTEL_NotFilled.h5"
 
 # Create and save datasets to an HDF5 file
 with h5py.File(output_filepath, "w") as f:
@@ -241,7 +241,7 @@ best_model = tuner.hypermodel.build(best_hps)
 
 # Define the ModelCheckpoint callback
 checkpoint = ModelCheckpoint(
-    r'D:\PhD_Files\Chapter2_Physics Informed Deep Learning\Best_Models\SNOTEL_Version_NotFilled\CNN-LSTM_timestep(5)_WithRegularization_SNOTEL.h5',  # Filepath to save the model
+    r'...\CNN-LSTM_timestep(5)_WithRegularization_SNOTEL.h5',  # Filepath to save the model
     monitor='val_loss',  # Metric to monitor
     save_best_only=True,  # Save only the best model
     mode='min',  # Minimize validation loss
@@ -283,7 +283,7 @@ plt.show()
 #This section is for loading the best developed model weights for applying on the testing phase
 
 # Load the saved model
-model_path = r'D:\PhD_Files\Chapter2_Physics Informed Deep Learning\Best_Models\SNOTEL_Without SMAP SM_NotFilled_version\Model_CNN-LSTM_timestep(5)_WithRegularization_Bayesian_withoutSMAPSM_SNOTEL.h5'
+model_path = r'...\Model_CNN-LSTM_timestep(5)_WithRegularization_Bayesian_withoutSMAPSM_SNOTEL.h5'
 best_model = load_model(model_path)
 
 y_pred_scaled = best_model.predict(X_test)
@@ -404,7 +404,7 @@ best_model.summary()
 stop_early = EarlyStopping(monitor='val_loss', patience=30)
 # Define the ModelCheckpoint callback
 checkpoint = ModelCheckpoint(
-    r'D:\PhD_Files\Chapter2_Physics Informed Deep Learning\Best_Models\SNOTEL_Without SMAP SM_NotFilled_version\Result_Subsurface (20 cm)\Model_Subsurface(8in)_CNN-LSTM_timestep(5)_Bayesian.h5',  # Filepath to save the model
+    r'...\Model_Subsurface(8in)_CNN-LSTM_timestep(5)_Bayesian.h5',  # Filepath to save the model
     monitor='val_loss',  # Metric to monitor
     save_best_only=True,  # Save only the best model
     mode='min',  # Minimize validation loss
@@ -413,10 +413,10 @@ checkpoint = ModelCheckpoint(
 
 
 # Load the saved model
-model_path = r'D:\PhD_Files\Chapter2_Physics Informed Deep Learning\Best_Models\SNOTEL_Without SMAP SM_NotFilled_version\Result_Subsurface (20 cm)\Model_Subsurface(8in)_CNN-LSTM_timestep(5)_Bayesian.h5'
+model_path = r'...\Model_Subsurface(8in)_CNN-LSTM_timestep(5)_Bayesian.h5'
 best_model = load_model(model_path)
 
-h5_file_path = r"D:\PhD_Files\Chapter2_Physics Informed Deep Learning\Dataset\Little Washita Creek WBDHU10\Modified SMAP Dataset\Subsurface (20cm)_Dataset.h5"
+h5_file_path = r"...\Subsurface (20cm)_Dataset.h5"
 with h5py.File(h5_file_path, 'r') as h5_file:
     h5_data = h5_file['data'][:]  # Replace 'combined_data' with the correct dataset key
     print(f"HDF5 data shape: {h5_data.shape}")
@@ -467,9 +467,9 @@ for abc in range(361):
             
     print(soil_moisture_map.shape)
     
-    source_tiff = r"D:\PhD_Files\Chapter2_Physics Informed Deep Learning\Dataset\Little Washita Creek WBDHU10\Modified SMAP Dataset\SOLUS Data\claytotal_15_cm_p.tif"
-    tiff_directory = r"D:\PhD_Files\Chapter2_Physics Informed Deep Learning\Dataset\Little Washita Creek WBDHU10\Modified SMAP Dataset\SPL3SMP_E.006_Soil_Moisture_Retrieval_Data_albedo"
-    output_directory = r"D:\PhD_Files\Chapter2_Physics Informed Deep Learning\Best_Models\SNOTEL_Without SMAP SM_NotFilled_version\New_Result_Surface (5cm)\Little Washita Creek WBDHU10\New_Produced_Data\Subsurface (20cm)_Little Washita"
+    source_tiff = r"...\claytotal_15_cm_p.tif"
+    tiff_directory = r"...\SPL3SMP_E.006_Soil_Moisture_Retrieval_Data_albedo"
+    output_directory = r"...\Subsurface (20cm)_Little Washita"
     
     # Extract dates from filenames
     dates = []
@@ -487,3 +487,4 @@ for abc in range(361):
         dst.write(soil_moisture_map.astype(rasterio.float32), 1)
     print(f"TIFF file saved as: {output_tiff}")                
     
+
